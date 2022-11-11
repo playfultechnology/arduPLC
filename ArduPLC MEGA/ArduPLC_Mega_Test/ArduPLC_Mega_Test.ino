@@ -8,12 +8,8 @@
 #include <Ethernet.h>
 #include <SD.h>
 #include <Wire.h>
-#include <Rtc_Pcf8563.h>
-#include "U8glib.h"
-//#include <ClickEncoder.h>
-#include <TimerOne.h>
-//#include <PCF8574.h> 
-//#include "Logo_128x64.h"
+// https://github.com/orbitalair/Rtc_Pcf8563
+#include "src/Rtc_Pcf8563.h"
 
 // Mapa de pines ArduPLC MEGA - Arduino
 #define RELE1   30
@@ -47,21 +43,9 @@
 #define CS_uSD      46
 #define INSERT_uSD  47
 
-// Driver para OLED, azul = SH1106, blanco = SSD1306
-//U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NONE|U8G_I2C_OPT_DEV_0);  // I2C / TWI 
-//U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_DEV_0|U8G_I2C_OPT_NO_ACK|U8G_I2C_OPT_FAST); // Fast I2C / TWI 
-//U8GLIB_SSD1306_128X64 u8g(U8G_I2C_OPT_NO_ACK);  // Display which does not send AC
-//U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NONE);  // I2C / TWI 
-//U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_DEV_0|U8G_I2C_OPT_FAST); // Dev 0, Fast I2C / TWI
-//U8GLIB_SH1106_128X64 u8g(U8G_I2C_OPT_NO_ACK); // Display which does not send ACK
-
 // Ethernet...
-#if defined(WIZ550io_WITH_MACADDRESS) // Use assigned MAC address of WIZ550io
-;
-#else
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
-#endif  
-IPAddress ip(192,168,1,190);
+IPAddress ip(192,168,0,190);
 EthernetServer server(80);
 
 // uSD...
@@ -73,22 +57,12 @@ SdFile root;
 #define ADDR_RTC   0x51  // Direccion I2C del RTC
 Rtc_Pcf8563 rtc;  
 
-// Encoder...
-// CHA, CHB, ENTER, DIV
-/*
-ClickEncoder encoder(18, 15, 14, 4);
-void timerIsr() {
-  encoder.service();
-}
-*/
-// I2C expander...
-
 
 void menu_inicio(void){
   Serial.println(F("---    Test ArduPLC MEGA v1.00    ---"));
   Serial.println(F("   Ray Ingenieria Electronica,S.L."));  
   Serial.println();
-  Serial.println(F("Pulse '?' para menu de ayuda"));    
+  Serial.println(F("Press '?' for help menu"));    
 }
 
 void menu(void){
@@ -138,19 +112,6 @@ void setup(){
   pinMode(INSERT_uSD, INPUT);  
   digitalWrite(CS_uSD, HIGH); // Deshabilita uSD para no interferir con el controlador W5500
 
-  // Configura OLED...
-  /*
-  u8g.begin();
-  u8g.setFont(u8g_font_6x13r);
-  u8g.setFontRefHeightText();
-  u8g.setFontPosTop();
-
-  // Visualiza logo en pantalla OLED...
-  u8g.firstPage();  
-  do {
-    u8g.drawBitmapP( 0, 0, 16, 64, logo_ray);
-  } while( u8g.nextPage() );  
-  */
   
   // Referencia externa
   analogReference(EXTERNAL);
@@ -159,20 +120,31 @@ void setup(){
   Serial.begin(9600); 
   Serial2.begin(9600); 
 
+
+
+
   // Inicializa ethernet y servidor web...
-#if defined(WIZ550io_WITH_MACADDRESS)
-  Ethernet.begin(ip);
-#else
-  Ethernet.begin(mac, ip);
-#endif  
+  Serial.println("Initialize Ethernet with DHCP:");
+  if (Ethernet.begin(mac) == 0) {
+    Serial.println("Failed to configure Ethernet using DHCP");
+    // Check for Ethernet hardware present
+    if (Ethernet.hardwareStatus() == EthernetNoHardware) {
+      Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
+    }
+    if (Ethernet.linkStatus() == LinkOFF) {
+      Serial.println("Ethernet cable is not connected.");
+    }
+    // try to configure using IP address instead of DHCP:
+    Ethernet.begin(mac, ip);
+  } else {
+    Serial.print("  DHCP assigned IP ");
+    Serial.println(Ethernet.localIP());
+  }
+
   server.begin();
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
 
-
-  // Inicializa y configura módulo expansión...
-  // Comenta esta linea si no tienes conectado el módulo de expansión...
-  //expander.begin(0x20);
 
   // Espera un poco mostrando el logo...
   delay(3000);
@@ -183,9 +155,6 @@ void setup(){
   // Menu de opciones...
   menu();
 
-  // Timer cada 1ms para el encoder...
-  //Timer1.initialize(1000);
-  //Timer1.attachInterrupt(timerIsr); 
 } 
 
 void loop(){ 
@@ -193,14 +162,6 @@ void loop(){
   static long timer_oled = 0;
 
 
-  // HMI...
-  /*
-  gestiona_encoder();
-  if((millis() - timer_oled) >= 100){
-    timer_oled = millis();
-    gestiona_oled();
-  }
-*/
   // Servidor web...
   test_server();
   
@@ -301,16 +262,7 @@ void loop(){
         escribeFecha(inString.substring(2));
         Serial.println("OK");        
       }     
-      /* 
-      if(inString.startsWith("E")){
-        Serial.println("Exp digital inputs: ");      
-        Serial.println(!expander.digitalRead(0),DEC);      
-        Serial.println(!expander.digitalRead(1),DEC);  
-        Serial.println(!expander.digitalRead(2),DEC);  
-        Serial.println(!expander.digitalRead(3),DEC);        
-        Serial.println("OK");      
-     }      
-     */ 
+ 
     
       inString = ""; 
       Serial.flush();
@@ -639,117 +591,4 @@ void escribeFecha(String mDate){
   
 void escribeHora(String mTime){
   rtc.setTime(mTime.substring(0,2).toInt(), mTime.substring(2,4).toInt(), mTime.substring(4,6).toInt());
-}
-/*
-void gestiona_encoder(void){
-  int enc;
-  static long posSP  = 0;
-  
-  enc = encoder.getValue();  
-  if(enc != 0){
-      switch(param){
-        case 0:
-          aout1 -= enc;
-          if(aout1 < 0) aout1 = 0;
-          if(aout1 > 255) aout1 = 255;
-          break;
-        case 1:
-          aout2 -= enc;
-          if(aout2 < 0) aout2 = 0;
-          if(aout2 > 255) aout2 = 255;          
-          break;
-      }
-  }
-  
-  if(encoder.getButton() == ClickEncoder::Clicked){
-    param ^= 0x01;
-  }
-}
-*/
-void gestiona_oled(void){
-/*
-  int h, w, temp, n;
-  char sTemp[30];
-
-  
-  u8g.firstPage();
-  do{
-    u8g.setFont(u8g_font_5x8r);  
-    u8g.setFontRefHeightText();
-    u8g.setFontPosTop();
-    h = u8g.getFontAscent()-u8g.getFontDescent();
-    w = u8g.getWidth();
-    
-    // Visualiza entradas analógicas...
-    sprintf(sTemp, "AI1:%4d",analogRead(AIN1));      
-    u8g.drawStr(1, 0*h-1 , sTemp);
-    sprintf(sTemp, "AI2:%4d",analogRead(AIN2));       
-    u8g.drawStr(1, 1*h-1 , sTemp);      
-    sprintf(sTemp, "AI3:%4d",analogRead(AIN3));       
-    u8g.drawStr(1, 2*h-1 , sTemp);   
-    sprintf(sTemp, "AI4:%4d",analogRead(AIN4));       
-    u8g.drawStr(1, 3*h-1 , sTemp);   
-    sprintf(sTemp, "AI5:%4d",analogRead(AIN5));       
-    u8g.drawStr(1, 4*h-1 , sTemp); 
-    sprintf(sTemp, "AI6:%4d",analogRead(AIN6));       
-    u8g.drawStr(1, 5*h-1 , sTemp);   
-    
-    if(param == 0){
-      u8g.setDefaultForegroundColor();    
-      u8g.drawBox(1, 6*h, 40, 6); 
-      u8g.setDefaultBackgroundColor();   
-    }
-    sprintf(sTemp, "AO1:%4d",aout1);       
-    u8g.drawStr(1, 6*h-1 , sTemp);   
-    u8g.setDefaultForegroundColor();
-
-    if(param == 1){
-      u8g.setDefaultForegroundColor();    
-      u8g.drawBox(1, 7*h, 40, 6); 
-      u8g.setDefaultBackgroundColor();   
-    }
-    sprintf(sTemp, "AO2:%4d",aout2);       
-    u8g.drawStr(1, 7*h-1 , sTemp);   
-    u8g.setDefaultForegroundColor();
-
-    
-    u8g.drawLine(0,56,127,56);
-    sprintf(sTemp, "%s - %s",rtc.formatDate(RTCC_DATE_WORLD), rtc.formatTime());     
-    u8g.drawStr(12, 8*h+1, sTemp);
-
-    u8g.setFont(u8g_font_6x10r); 
-    u8g.setFontRefHeightText();
-    u8g.setFontPosTop();      
-    h = u8g.getFontAscent()-u8g.getFontDescent();
-    w = u8g.getWidth();      
-    
-    // Visualiza potenciometros...
-    n = (int)((analogRead(POT1)*100L) / 1023L);
-    sprintf(sTemp, "POT1:%3d%%",n);       
-    u8g.drawStr(50, 2*h-1 , sTemp);   
-    n = (int)((analogRead(POT2)*100L) / 1023L);
-    sprintf(sTemp, "POT2:%3d%%",n);       
-    u8g.drawStr(50, 3*h-1 , sTemp);   
-
-
-    // Visualiza entradas digitales...
-    u8g.drawStr(50, 1*h-1 , "DIN: 87654321"); 
-    for(n=0;n<=7;n++){
-      //if(!digitalRead(DIN8-n)) u8g.drawStr(50+(6*(5+n)), 0*h-1 , "#"); 
-      if(!digitalRead(DIN8-n))
-        u8g.drawBox(51+(6*(5+n)),2,2,4);
-      u8g.drawFrame(49+(6*(5+n)),0,6,8);
-    }
-    
-    // Visualiza salidas rele...      
-    u8g.drawStr(50, 4*h-1 , "RELAY: 123456");   
-    for(n=0;n<=5;n++){
-      //if(digitalRead(RELE1+n)) u8g.drawStr(50+(6*(7+n)), 5*h-1 , "#"); 
-      if(digitalRead(RELE1+n))
-        u8g.drawBox(51+(6*(7+n)),46,2,4);
-      u8g.drawFrame(49+(6*(7+n)),44,6,8);        
-    }          
-
-  }while(u8g.nextPage());
-  */
 }
